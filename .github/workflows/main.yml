@@ -1,0 +1,84 @@
+name: Update V2Ray Nodes
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # 每小时执行一次 (UTC时间)
+  workflow_dispatch:      # 允许手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Download CloudflareST
+        run: |
+          # 下载 XIU2 的 CloudflareST 工具
+          wget -N https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_amd64.tar.gz
+          tar -zxf CloudflareST_linux_amd64.tar.gz
+          chmod +x CloudflareST
+
+      - name: Run Speed Test and Generate Config
+        env:
+          MY_UUID: ${{ secrets.UUID }}        # 在GitHub Secrets里配置
+          MY_HOST: ${{ secrets.HOST }}        # 在GitHub Secrets里配置 (例如 vless.abc.com)
+        run: |
+          echo "Starting Scan..."
+          
+          # 创建结果文件
+          > final_subs.txt
+          
+          # 定义你要的国家代码 (ISO 3166-1 alpha-2)
+          # 注意：CloudflareST 支持 -cc 参数过滤国家，但需要 ip.csv 包含地理信息
+          # 简单做法：我们循环对每个国家进行特定的筛选和测试
+          
+          COUNTRIES=("US" "FR" "DE" "GB" "HK" "JP" "SG")
+          
+          for CC in "${COUNTRIES[@]}"; do
+            echo "Testing for Country: $CC"
+            
+            # 运行 CloudflareST
+            # -cc: 国家代码 
+            # -tll: 延迟下限 
+            # -tl: 延迟上限 
+            # -dn: 结果数量(取最快的一个)
+            # -p: 测速下载数(0不测下载速度，但你需要测速，设为 10)
+            # -url: 测速地址
+            
+            ./CloudflareST -cc $CC -tp 443 -n 200 -dn 1 -tll 0 -tl 400 -p 5 -o "result_$CC.csv"
+            
+            # 读取结果 (CSV格式: IP, Port, Latency, DownloadSpeed...)
+            # 提取第一行有效数据 (排除标题)
+            IP=$(sed -n '2p' result_$CC.csv | cut -d',' -f1)
+            SPEED=$(sed -n '2p' result_$CC.csv | cut -d',' -f6) # 第6列通常是速度MB/s
+            
+            if [ -n "$IP" ]; then
+              # 构建 VLESS 链接
+              # 格式: vless://UUID@IP:443?encryption=none&security=tls&sni=HOST&fp=random&type=ws&host=HOST&path=%2F#备注
+              
+              # 处理速度显示的单位
+              SPEED_VAL="${SPEED}MB/s"
+              
+              # 构建别名
+              REMARK="${CC}_${SPEED_VAL}_Auto"
+              
+              LINK="vless://${MY_UUID}@${IP}:443?encryption=none&security=tls&sni=${MY_HOST}&fp=chrome&type=ws&host=${MY_HOST}&path=%2F%3Fed%3D2048#${REMARK}"
+              
+              echo "$LINK" >> final_subs.txt
+              echo "Added node for $CC: $IP Speed: $SPEED_VAL"
+            else
+              echo "No valid IP found for $CC"
+            fi
+          done
+          
+          # Base64 编码 (V2RayN 标准订阅格式)
+          base64 final_subs.txt > sub_base64.txt
+
+      - name: Commit and Push
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add final_subs.txt sub_base64.txt
+          git commit -m "Auto update nodes: $(date)" || exit 0
+          git push
