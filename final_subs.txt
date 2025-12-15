@@ -1,6 +1,6 @@
 vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@104.19.2.3:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#★Manual_US_104.19.2.3
 vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@172.67.1.2:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#★Manual_HK_172.67.1.2
-vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@104.25.145.128:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_US_0.00MB
-vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@104.24.40.178:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_HK_137.57MB
-vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@104.19.58.163:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_JP_170.77MB
-vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@172.67.72.143:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_SG_223.64MB
+vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@104.21.40.61:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_US_0.00MB
+vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@104.24.141.223:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_HK_0.00MB
+vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@104.25.210.163:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_JP_0.00MB
+vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@172.64.40.77:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_SG_0.00MB
