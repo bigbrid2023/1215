@@ -2,7 +2,7 @@ name: Update V2Ray Nodes
 
 on:
   schedule:
-    - cron: '0 * * * *'  # 每小时执行一次 (UTC时间)
+    - cron: '0 * * * *'  # 每小时执行一次
   workflow_dispatch:      # 允许手动触发
 
 jobs:
@@ -14,71 +14,72 @@ jobs:
 
       - name: Download CloudflareST
         run: |
-          # 下载 XIU2 的 CloudflareST 工具
           wget -N https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_amd64.tar.gz
           tar -zxf CloudflareST_linux_amd64.tar.gz
           chmod +x CloudflareST
 
       - name: Run Speed Test and Generate Config
         env:
-          MY_UUID: ${{ secrets.UUID }}        # 在GitHub Secrets里配置
-          MY_HOST: ${{ secrets.HOST }}        # 在GitHub Secrets里配置 (例如 vless.abc.com)
+          MY_UUID: ${{ secrets.UUID }}
+          MY_HOST: ${{ secrets.HOST }}
         run: |
           echo "Starting Scan..."
-          
-          # 创建结果文件
           > final_subs.txt
           
-          # 定义你要的国家代码 (ISO 3166-1 alpha-2)
-          # 注意：CloudflareST 支持 -cc 参数过滤国家，但需要 ip.csv 包含地理信息
-          # 简单做法：我们循环对每个国家进行特定的筛选和测试
+          # 定义地区映射 (格式: "国家名称:机场代码")
+          # US=洛杉矶, FR=巴黎, DE=法兰克福, GB=伦敦, HK=香港, JP=东京, SG=新加坡
+          LOCATIONS=("US:LAX" "FR:CDG" "DE:FRA" "GB:LHR" "HK:HKG" "JP:NRT" "SG:SIN")
           
-          COUNTRIES=("US" "FR" "DE" "GB" "HK" "JP" "SG")
-          
-          for CC in "${COUNTRIES[@]}"; do
-            echo "Testing for Country: $CC"
+          for LOC in "${LOCATIONS[@]}"; do
+            # 拆分字符串，获取 国家名 和 机场代码
+            COUNTRY=${LOC%%:*}
+            COLO=${LOC##*:}
             
-            # 运行 CloudflareST
-            # -cc: 国家代码 
-            # -tll: 延迟下限 
-            # -tl: 延迟上限 
-            # -dn: 结果数量(取最快的一个)
-            # -p: 测速下载数(0不测下载速度，但你需要测速，设为 10)
-            # -url: 测速地址
+            echo "Testing for $COUNTRY using Data Center: $COLO"
             
-            ./CloudflareST -cc $CC -tp 443 -n 200 -dn 1 -tll 0 -tl 400 -p 5 -o "result_$CC.csv"
+            # 使用 -cfcolo 参数代替不支持的 -cc
+            # -cfcolo: 匹配特定数据中心 (例如 HKG)
+            # -p 10: 显示10个结果，确保有足够的IP可选
+            # -dn 1: 只要1个最快的结果
             
-            # 读取结果 (CSV格式: IP, Port, Latency, DownloadSpeed...)
-            # 提取第一行有效数据 (排除标题)
-            IP=$(sed -n '2p' result_$CC.csv | cut -d',' -f1)
-            SPEED=$(sed -n '2p' result_$CC.csv | cut -d',' -f6) # 第6列通常是速度MB/s
+            ./CloudflareST -cfcolo $COLO -tp 443 -n 200 -dn 1 -tll 0 -tl 400 -p 10 -o "result_$COUNTRY.csv"
             
-            if [ -n "$IP" ]; then
-              # 构建 VLESS 链接
-              # 格式: vless://UUID@IP:443?encryption=none&security=tls&sni=HOST&fp=random&type=ws&host=HOST&path=%2F#备注
-              
-              # 处理速度显示的单位
-              SPEED_VAL="${SPEED}MB/s"
-              
-              # 构建别名
-              REMARK="${CC}_${SPEED_VAL}_Auto"
-              
-              LINK="vless://${MY_UUID}@${IP}:443?encryption=none&security=tls&sni=${MY_HOST}&fp=chrome&type=ws&host=${MY_HOST}&path=%2F%3Fed%3D2048#${REMARK}"
-              
-              echo "$LINK" >> final_subs.txt
-              echo "Added node for $CC: $IP Speed: $SPEED_VAL"
+            # 检查文件是否存在且有内容
+            if [ -f "result_$COUNTRY.csv" ]; then
+                # 提取IP (CSV第2行第1列)
+                IP=$(sed -n '2p' "result_$COUNTRY.csv" | cut -d',' -f1)
+                # 提取速度 (CSV第2行第6列)
+                SPEED=$(sed -n '2p' "result_$COUNTRY.csv" | cut -d',' -f6)
+                
+                if [ -n "$IP" ] && [ "$IP" != "IP地址" ]; then
+                  SPEED_VAL="${SPEED}MB"
+                  REMARK="${COUNTRY}_${SPEED_VAL}_${COLO}"
+                  
+                  # 生成链接
+                  LINK="vless://${MY_UUID}@${IP}:443?encryption=none&security=tls&sni=${MY_HOST}&fp=chrome&type=ws&host=${MY_HOST}&path=%2F%3Fed%3D2048#${REMARK}"
+                  
+                  echo "$LINK" >> final_subs.txt
+                  echo "SUCCESS: Found node for $COUNTRY ($COLO): $IP Speed: $SPEED"
+                else
+                  echo "WARNING: No valid IP found for $COUNTRY ($COLO)"
+                fi
             else
-              echo "No valid IP found for $CC"
+                echo "ERROR: CSV not generated for $COUNTRY"
             fi
           done
           
-          # Base64 编码 (V2RayN 标准订阅格式)
-          base64 final_subs.txt > sub_base64.txt
+          # Base64 编码
+          if [ -s final_subs.txt ]; then
+            base64 final_subs.txt > sub_base64.txt
+          else
+            echo "No nodes found at all!" > sub_base64.txt
+          fi
 
       - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          # 只有当文件有变化时才提交
           git add final_subs.txt sub_base64.txt
           git commit -m "Auto update nodes: $(date)" || exit 0
           git push
