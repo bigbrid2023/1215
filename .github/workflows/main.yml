@@ -2,12 +2,11 @@ name: Flash Update (Instant Manual + Auto Backup)
 
 on:
   schedule:
-    # 每天北京时间 08:00 和 20:00 运行
     - cron: '0 0,12 * * *'
-  workflow_dispatch:      # 允许手动触发
+  workflow_dispatch:
   push:
     paths:
-      - 'manual_ips.txt'  # 当 manual_ips.txt 变化时触发
+      - 'manual_ips.txt'
 
 jobs:
   build:
@@ -29,9 +28,7 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
 
-      # =======================================================
-      # 第一阶段：闪电推送 (只处理你本地上传的优选IP)
-      # =======================================================
+      # --- 第一阶段：闪电推送 (你的手动优选IP) ---
       - name: Stage 1 - Instant Push (Manual IPs)
         env:
           MY_UUID: ${{ secrets.UUID }}
@@ -42,38 +39,28 @@ jobs:
 
           if [ -f "manual_ips.txt" ]; then
             while IFS= read -r line || [[ -n "$line" ]]; do
-              # 过滤空行和注释
               if [[ -z "$line" ]] || [[ "$line" =~ ^# ]]; then continue; fi
-              
               IP=$(echo "$line" | cut -d'#' -f1 | xargs)
               CC=$(echo "$line" | cut -d'#' -f2 | xargs)
-              
               if [[ -n "$IP" ]]; then
                 if [[ -z "$CC" ]]; then CC="LocalBest"; fi
-                # 你的主力节点
                 REMARK="★Manual_${CC}_${IP}"
                 LINK="vless://${MY_UUID}@${IP}:443?encryption=none&security=tls&sni=${MY_HOST}&fp=chrome&type=ws&host=${MY_HOST}&path=%2F%3Fed%3D2048#${REMARK}"
                 echo "$LINK" >> final_subs.txt
               fi
             done < manual_ips.txt
-          else
-            echo "No manual_ips.txt found!"
           fi
 
-          # 只要有手动节点，立刻推送！不用等测速！
           if [ -s final_subs.txt ]; then
               base64 final_subs.txt > sub_base64.txt
               git add final_subs.txt sub_base64.txt
-              # 防冲突三连：add -> pull rebase -> commit
               git pull --rebase origin main || git pull origin main
               git commit -m "Flash Update: Manual IPs Online $(date)" || echo "No changes"
               git push origin main
-              echo "✅ Stage 1 Done: Manual IPs are live!"
+              echo "✅ Stage 1 Done"
           fi
 
-      # =======================================================
-      # 第二阶段：通用备份扫描 (不限地区，防止卡死)
-      # =======================================================
+      # --- 第二阶段：备用节点扫描 (修复了 sed 报错) ---
       - name: Stage 2 - Auto Backup Scan
         env:
           MY_UUID: ${{ secrets.UUID }}
@@ -81,16 +68,14 @@ jobs:
         run: |
           echo "--- Stage 2: Scanning for Backups ---"
           
-          # 【修改点】：去掉了 -cfcolo 参数
-          # GitHub 只能连到美东，所以这里选出来的全是美东节点。
           # -n 50: 快速扫50个IP
-          # -dn 3: 只要3个最快的做备用
-          # -dd: 禁用下载测速 (极速)
-          
+          # -dn 3: 只要3个最快的
+          # -dd: 禁用下载测速
           ./CloudflareST -tp 443 -n 50 -dn 3 -dd -tll 0 -tl 500 -p 0 -o "result_backup.csv"
           
           if [ -f "result_backup.csv" ]; then
-             sed -1d result_backup.csv | while IFS=, read -r IP _ _ _ _ _; do
+             # 【修复点】这里修正了 sed 语法，之前写错成 -1d 了
+             sed '1d' result_backup.csv | while IFS=, read -r IP _ _ _ _ _; do
                 if [ -n "$IP" ]; then
                    REMARK="Auto_Backup_${IP}"
                    LINK="vless://${MY_UUID}@${IP}:443?encryption=none&security=tls&sni=${MY_HOST}&fp=chrome&type=ws&host=${MY_HOST}&path=%2F%3Fed%3D2048#${REMARK}"
@@ -100,7 +85,6 @@ jobs:
              done
           fi
 
-          # 第二次推送 (把备用节点追加进去)
           base64 final_subs.txt > sub_base64.txt
           git add final_subs.txt sub_base64.txt
           git pull --rebase origin main || git pull origin main
