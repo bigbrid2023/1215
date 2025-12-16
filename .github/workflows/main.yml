@@ -1,12 +1,12 @@
-name: Hybrid Update V2Ray Nodes
+name: Update nodes (Manual + Auto)
 
 on:
   schedule:
-    - cron: '0 * * * *'  # 每小时运行
-  workflow_dispatch:      # 允许手动触发
+    - cron: '0 * * * *'  # 每小时运行一次
+  workflow_dispatch:      # 允许手动运行
   push:
     paths:
-      - 'manual_ips.txt'  # 当你修改 IP 文件时自动触发更新
+      - 'manual_ips.txt'  # 当你本地脚本上传IP后，自动触发
 
 jobs:
   build:
@@ -26,62 +26,61 @@ jobs:
           MY_UUID: ${{ secrets.UUID }}
           MY_HOST: ${{ secrets.HOST }}
         run: |
-          # 初始化结果文件
           > final_subs.txt
 
-          # --- 模块1：处理用户手动上传的优选IP (优先级最高) ---
+          # --- 1. 处理手动优选 IP (这是你本地上传的，优先级最高) ---
           if [ -f "manual_ips.txt" ]; then
             echo "--- Found manual_ips.txt, processing... ---"
             while IFS= read -r line || [[ -n "$line" ]]; do
-              # 跳过空行和注释
               if [[ -z "$line" ]] || [[ "$line" =~ ^# ]]; then continue; fi
-              
-              # 提取 IP 和 国家代码
+              # 提取 # 前后的内容
               IP=$(echo "$line" | cut -d'#' -f1 | xargs)
               CC=$(echo "$line" | cut -d'#' -f2 | xargs)
               
               if [[ -n "$IP" ]]; then
-                # 生成备注：Manual_国家_IP
+                # 如果没写备注，默认叫 Manual
+                if [[ -z "$CC" ]]; then CC="LocalBest"; fi
+                
                 REMARK="★Manual_${CC}_${IP}"
-                # 生成链接
                 LINK="vless://${MY_UUID}@${IP}:443?encryption=none&security=tls&sni=${MY_HOST}&fp=chrome&type=ws&host=${MY_HOST}&path=%2F%3Fed%3D2048#${REMARK}"
                 
                 echo "$LINK" >> final_subs.txt
                 echo "Added Manual Node: $IP ($CC)"
               fi
             done < manual_ips.txt
-          else
-            echo "No manual_ips.txt found, skipping..."
           fi
 
-          # --- 模块2：GitHub 自动扫描兜底节点 (优先级低) ---
-          echo "--- Starting Auto Scan for Backups ---"
-          
-          # 定义需要自动扫描的地区 (格式 "国家:机场代码")
+          # --- 2. 自动兜底扫描 (云端极速模式 - 仅测延迟，不测下载) ---
+          echo "--- Starting Fast Auto Scan ---"
+          # 定义要扫描的地区
           LOCATIONS=("US:LAX" "HK:HKG" "JP:NRT" "SG:SIN")
           
           for LOC in "${LOCATIONS[@]}"; do
             COUNTRY=${LOC%%:*}
             COLO=${LOC##*:}
             
-            # 快速扫描，只要1个最快的做备用
-            ./CloudflareST -cfcolo $COLO -tp 443 -n 100 -dn 1 -tll 0 -tl 450 -p 5 -o "result.csv"
+            # 关键修改：
+            # -dd : 禁用下载测速 (Disable Download) -> 速度提升10倍
+            # -n 50 : 只扫50个IP (足够了)
+            # -p 0 : 不显示进度条，节省日志空间
+            
+            ./CloudflareST -cfcolo $COLO -tp 443 -n 50 -dd -tll 0 -tl 400 -p 0 -o "result.csv"
             
             if [ -f "result.csv" ]; then
+                # 提取第一行有效IP
                 IP=$(sed -n '2p' "result.csv" | cut -d',' -f1)
-                SPEED=$(sed -n '2p' "result.csv" | cut -d',' -f6)
                 
                 if [ -n "$IP" ] && [ "$IP" != "IP地址" ]; then
-                  REMARK="Auto_${COUNTRY}_${SPEED}MB"
+                  REMARK="Auto_${COUNTRY}_${COLO}"
                   LINK="vless://${MY_UUID}@${IP}:443?encryption=none&security=tls&sni=${MY_HOST}&fp=chrome&type=ws&host=${MY_HOST}&path=%2F%3Fed%3D2048#${REMARK}"
                   echo "$LINK" >> final_subs.txt
-                  echo "Added Auto Node: $IP for $COUNTRY"
+                  echo "Found fast node for $COUNTRY: $IP"
                 fi
                 rm result.csv
             fi
           done
 
-          # --- 模块3：生成最终订阅 ---
+          # --- 3. 生成 Base64 ---
           if [ -s final_subs.txt ]; then
             base64 final_subs.txt > sub_base64.txt
           else
