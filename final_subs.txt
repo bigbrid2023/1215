@@ -1,1 +1,1 @@
-vless://a47256a6-b7e1-4361-be37-c3bc4b5f72b4@104.17.31.136:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#★Manual_LocalBest_104.17.31.136
+vless://2d137454-7320-4a1a-a1bd-a387b3b6e40e@104.16.150.114:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#★Manual_LocalBest_104.16.150.114
