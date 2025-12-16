@@ -3,20 +3,26 @@ name: Update nodes (Manual + Auto)
 on:
   schedule:
     - cron: '0 * * * *'  # 每小时运行一次
-  workflow_dispatch:      # 允许手动运行
+  workflow_dispatch:      # 允许手动触发
   push:
     paths:
-      - 'manual_ips.txt'  # 当你本地脚本上传IP后，自动触发
+      - 'manual_ips.txt'  # 当 manual_ips.txt 发生变化时触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 赋予写权限，防止 403 错误
+      
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # 获取完整历史，防止提交冲突
 
       - name: Download CloudflareST
         run: |
+          # 下载测速工具
           wget -N https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_amd64.tar.gz
           tar -zxf CloudflareST_linux_amd64.tar.gz
           chmod +x CloudflareST
@@ -28,53 +34,40 @@ jobs:
         run: |
           > final_subs.txt
 
-          # --- 1. 处理手动优选 IP (这是你本地上传的，优先级最高) ---
+          # --- 1. 处理手动优选 IP (优先级最高) ---
           if [ -f "manual_ips.txt" ]; then
-            echo "--- Found manual_ips.txt, processing... ---"
+            echo "--- Processing manual_ips.txt ---"
             while IFS= read -r line || [[ -n "$line" ]]; do
               if [[ -z "$line" ]] || [[ "$line" =~ ^# ]]; then continue; fi
-              # 提取 # 前后的内容
               IP=$(echo "$line" | cut -d'#' -f1 | xargs)
               CC=$(echo "$line" | cut -d'#' -f2 | xargs)
-              
               if [[ -n "$IP" ]]; then
-                # 如果没写备注，默认叫 Manual
                 if [[ -z "$CC" ]]; then CC="LocalBest"; fi
-                
                 REMARK="★Manual_${CC}_${IP}"
                 LINK="vless://${MY_UUID}@${IP}:443?encryption=none&security=tls&sni=${MY_HOST}&fp=chrome&type=ws&host=${MY_HOST}&path=%2F%3Fed%3D2048#${REMARK}"
-                
                 echo "$LINK" >> final_subs.txt
-                echo "Added Manual Node: $IP ($CC)"
               fi
             done < manual_ips.txt
           fi
 
-          # --- 2. 自动兜底扫描 (云端极速模式 - 仅测延迟，不测下载) ---
+          # --- 2. 自动兜底扫描 (极速模式) ---
           echo "--- Starting Fast Auto Scan ---"
-          # 定义要扫描的地区
+          # 仅扫描这几个核心地区
           LOCATIONS=("US:LAX" "HK:HKG" "JP:NRT" "SG:SIN")
           
           for LOC in "${LOCATIONS[@]}"; do
             COUNTRY=${LOC%%:*}
             COLO=${LOC##*:}
             
-            # 关键修改：
-            # -dd : 禁用下载测速 (Disable Download) -> 速度提升10倍
-            # -n 50 : 只扫50个IP (足够了)
-            # -p 0 : 不显示进度条，节省日志空间
-            
-            ./CloudflareST -cfcolo $COLO -tp 443 -n 50 -dd -tll 0 -tl 400 -p 0 -o "result.csv"
+            # 关键修改：-dd 禁用下载测速，-n 50 减少数量，确保 30秒内跑完
+            ./CloudflareST -cfcolo $COLO -tp 443 -n 50 -dd -tll 0 -tl 450 -p 0 -o "result.csv"
             
             if [ -f "result.csv" ]; then
-                # 提取第一行有效IP
                 IP=$(sed -n '2p' "result.csv" | cut -d',' -f1)
-                
                 if [ -n "$IP" ] && [ "$IP" != "IP地址" ]; then
                   REMARK="Auto_${COUNTRY}_${COLO}"
                   LINK="vless://${MY_UUID}@${IP}:443?encryption=none&security=tls&sni=${MY_HOST}&fp=chrome&type=ws&host=${MY_HOST}&path=%2F%3Fed%3D2048#${REMARK}"
                   echo "$LINK" >> final_subs.txt
-                  echo "Found fast node for $COUNTRY: $IP"
                 fi
                 rm result.csv
             fi
@@ -91,6 +84,13 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          
+          # 先把生成的文件加入暂存区
           git add final_subs.txt sub_base64.txt
-          git commit -m "Update nodes (Manual + Auto): $(date)" || exit 0
-          git push
+          
+          # 【核心修复】提交前先拉取最新代码，解决冲突
+          git pull --rebase origin main || echo "Rebase failed, trying merge"
+          
+          # 提交并推送
+          git commit -m "Update nodes: $(date)" || exit 0
+          git push origin main
