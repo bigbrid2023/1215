@@ -6,23 +6,22 @@ on:
   workflow_dispatch:      # 允许手动触发
   push:
     paths:
-      - 'manual_ips.txt'  # 当 manual_ips.txt 发生变化时触发
+      - 'manual_ips.txt'  # 只有当 manual_ips.txt 变化时才触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 赋予写权限，防止 403 错误
+      contents: write  # 授予写权限
       
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # 获取完整历史，防止提交冲突
+          fetch-depth: 0 # 【关键】拉取完整历史，防止提交冲突
 
       - name: Download CloudflareST
         run: |
-          # 下载测速工具
           wget -N https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_amd64.tar.gz
           tar -zxf CloudflareST_linux_amd64.tar.gz
           chmod +x CloudflareST
@@ -50,17 +49,20 @@ jobs:
             done < manual_ips.txt
           fi
 
-          # --- 2. 自动兜底扫描 (极速模式) ---
+          # --- 2. 自动兜底扫描 (涡轮极速模式) ---
           echo "--- Starting Fast Auto Scan ---"
-          # 仅扫描这几个核心地区
           LOCATIONS=("US:LAX" "HK:HKG" "JP:NRT" "SG:SIN")
           
           for LOC in "${LOCATIONS[@]}"; do
             COUNTRY=${LOC%%:*}
             COLO=${LOC##*:}
             
-            # 关键修改：-dd 禁用下载测速，-n 50 减少数量，确保 30秒内跑完
-            ./CloudflareST -cfcolo $COLO -tp 443 -n 50 -dd -tll 0 -tl 450 -p 0 -o "result.csv"
+            # 【核心修改】：
+            # -n 8  : 只扫 8 个 IP (作为备用足够了，速度极快)
+            # -dd   : 禁用下载测速
+            # -p 1  : 显示 1 条结果 (让你看到它在动，不是卡死)
+            
+            ./CloudflareST -cfcolo $COLO -tp 443 -n 8 -dd -tll 0 -tl 500 -p 1 -o "result.csv"
             
             if [ -f "result.csv" ]; then
                 IP=$(sed -n '2p' "result.csv" | cut -d',' -f1)
@@ -85,12 +87,10 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
-          # 先把生成的文件加入暂存区
           git add final_subs.txt sub_base64.txt
           
-          # 【核心修复】提交前先拉取最新代码，解决冲突
-          git pull --rebase origin main || echo "Rebase failed, trying merge"
+          # 【防撞车逻辑】提交前强制同步云端最新状态
+          git pull --rebase origin main || git pull origin main
           
-          # 提交并推送
           git commit -m "Update nodes: $(date)" || exit 0
           git push origin main
