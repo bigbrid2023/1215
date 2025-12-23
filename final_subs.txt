@@ -1,1 +1,7 @@
 vless://2d137454-7320-4a1a-a1bd-a387b3b6e40e@104.17.183.45:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#★Manual_LocalBest_104.17.183.45
+vless://2d137454-7320-4a1a-a1bd-a387b3b6e40e@172.65.2.35:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_Backup_172.65.2.35
+vless://2d137454-7320-4a1a-a1bd-a387b3b6e40e@172.65.212.85:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_Backup_172.65.212.85
+vless://2d137454-7320-4a1a-a1bd-a387b3b6e40e@172.65.15.208:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_Backup_172.65.15.208
+vless://2d137454-7320-4a1a-a1bd-a387b3b6e40e@104.20.8.203:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_Backup_104.20.8.203
+vless://2d137454-7320-4a1a-a1bd-a387b3b6e40e@104.24.57.112:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_Backup_104.24.57.112
+vless://2d137454-7320-4a1a-a1bd-a387b3b6e40e@172.65.237.103:443?encryption=none&security=tls&sni=1215.fastdog.dpdns.org&fp=chrome&type=ws&host=1215.fastdog.dpdns.org&path=%2F%3Fed%3D2048#Auto_Backup_172.65.237.103
