@@ -3,6 +3,8 @@ import time
 import base64
 import re
 import socket
+import json
+import requests
 from urllib.parse import unquote
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -17,7 +19,7 @@ TARGET_URL = "https://openproxylist.com/v2ray/rawlist/subscribe"
 # ===========================================
 
 def get_subscribe_content():
-    print(">>> 正在启动浏览器获取订阅源...")
+    print(">>> [1/5] 正在启动浏览器获取订阅源...")
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
@@ -29,39 +31,44 @@ def get_subscribe_content():
     content = ""
     
     try:
-        print(f">>> 访问 URL: {TARGET_URL}")
         driver.get(TARGET_URL)
         time.sleep(5)
         content = driver.find_element("tag name", "body").text
-        print(f">>> 成功获取内容，长度: {len(content)}")
+        print(f">>> 获取成功，长度: {len(content)}")
     except Exception as e:
-        print(f"!!! 获取订阅源失败: {e}")
+        print(f"!!! 获取失败: {e}")
     finally:
         driver.quit()
-        
     return content
 
 def decode_base64(content):
     try:
         content = content.strip()
-        # 自动补全 Base64 padding
         missing_padding = len(content) % 4
         if missing_padding:
             content += '=' * (4 - missing_padding)
-            
         decoded_bytes = base64.b64decode(content)
         decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
-        links = decoded_str.splitlines()
-        print(f">>> Base64 解码成功，共解析出 {len(links)} 行数据")
-        return links
-    except Exception as e:
-        print(f"!!! Base64 解码异常 (将尝试直接按行处理): {e}")
+        return decoded_str.splitlines()
+    except:
         return content.splitlines()
 
-def tcp_ping(host, port, timeout=3):
+def get_ip_location(ip):
     """
-    TCP 端口连通性测试
+    调用 ip-api.com 查询 IP 真实归属地
     """
+    try:
+        # 限制速率，防止 API 封禁
+        time.sleep(0.6) 
+        response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,countryCode", timeout=5)
+        data = response.json()
+        if data['status'] == 'success':
+            return data['countryCode'] # 返回 US, CN, JP 等
+    except:
+        pass
+    return "Unknown"
+
+def tcp_ping(host, port, timeout=2):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
@@ -71,51 +78,24 @@ def tcp_ping(host, port, timeout=3):
     except:
         return False
 
-def parse_filter_and_test(links):
+def process_nodes(links):
     valid_nodes = []
-    print(">>> 开始宽松筛选与测速 (Scanning)...")
+    print(">>> [3/5] 开始处理节点 (API 验证 IP 归属地，速度较慢请耐心等待)...")
     
-    # 调试计数器
-    debug_count = 0
+    # 限制最大处理数量，防止脚本运行超时 (处理前 80 个看起来像美国的)
+    count = 0
     
     for link in links:
         link = link.strip()
         if not link.startswith("vless://"):
             continue
             
-        # 调试：打印前3个原始链接，看看长什么样
-        if debug_count < 3:
-            print(f"[DEBUG] 扫描节点样本: {link[:60]}...")
-            debug_count += 1
-            
-        # === 核心逻辑修改：全字符串匹配 ===
-        # 不再依赖备注位置，只要这行字里有 US 信息就算
-        upper_link = link.upper()
-        
-        # 1. 关键词检测
-        is_us = False
-        if "UNITED STATES" in upper_link or "UNITEDSTATES" in upper_link or "AMERICA" in upper_link:
-            is_us = True
-        # 检测独立的 "US" (避免匹配到 RUSSIA 或 STATUS)
-        # 正则含义：US前后不是字母
-        elif re.search(r'[^A-Z]US[^A-Z]', upper_link) or upper_link.endswith("US") or "US_" in upper_link:
-            is_us = True
-            
-        if not is_us:
-            continue # 不是美国节点，跳过
+        # 简单预筛选：如果备注里明显写了其他国家，先跳过，节省 API 次数
+        if any(c in link.upper() for c in ["FINLAND", "RUSSIA", "GERMANY", "KOREA", "JAPAN", "HONG KONG"]):
+            continue
 
-        # 2. 提取信息用于测速
         try:
-            # 提取备注以便后续命名 (尝试取 # 后面的)
-            remark = "US_Node"
-            if "#" in link:
-                try:
-                    raw_remark = link.split("#")[-1]
-                    remark = unquote(raw_remark).strip()
-                except:
-                    pass
-            
-            # 解析 IP 和 端口
+            # 解析 IP
             main_part = link.split("?")[0]
             if "@" in main_part:
                 ip_port = main_part.split("@")[-1]
@@ -128,35 +108,56 @@ def parse_filter_and_test(links):
             else:
                 host = ip_port.split(":")[0]
                 port = ip_port.split(":")[1]
+
+            # === 步骤 1: 验活 (连不上的直接不要，省流量) ===
+            if not tcp_ping(host, port):
+                continue
             
-            # 3. 连通性测试
-            if tcp_ping(host, port):
-                # 重新构造成带有 US 标签的节点
-                # 移除旧备注，加上新备注
-                base_link = link.split("#")[0]
-                # 构造新备注：US_GitHubAlive_原备注前10位
-                new_remark = f"US_GitHubAlive_{remark[:15]}"
-                # 去除备注里可能的非法字符
-                new_remark = re.sub(r'[^\w\-_]', '', new_remark)
-                
-                final_link = f"{base_link}#{new_remark}"
-                valid_nodes.append(final_link)
+            # === 步骤 2: API 查户口 (必须是 US) ===
+            country = get_ip_location(host)
+            if country != "US":
+                print(f"    [剔除] {host} 归属地是 {country}，非美国。")
+                continue
+            
+            # === 步骤 3: 成功入库 ===
+            print(f"    [保留] {host} 是纯正美国 IP，且存活。")
+            
+            # 提取并美化备注
+            remark = "Node"
+            if "#" in link:
+                try:
+                    raw_remark = link.split("#")[-1]
+                    remark = unquote(raw_remark).strip()
+                except:
+                    pass
+            
+            # 统一命名格式
+            new_remark = f"US_Strict_{remark[:10]}"
+            new_remark = re.sub(r'[^\w\-]', '', new_remark) # 清理特殊字符
+            
+            base_link = link.split("#")[0]
+            final_link = f"{base_link}#{new_remark}"
+            
+            valid_nodes.append(final_link)
+            count += 1
+            
+            # 为了防止超时，最多只取 50 个精品
+            if count >= 50:
+                print(">>> 已达到 50 个精品节点上限，停止采集。")
+                break
                 
         except Exception as e:
-            # 解析出错跳过
             continue
 
-    print(f">>> 筛选完成，共找到 {len(valid_nodes)} 个可用节点")
+    print(f">>> [4/5] 筛选完成，共找到 {len(valid_nodes)} 个【纯美国】存活节点")
     return valid_nodes
 
 def update_github(nodes):
     if not nodes:
-        print(">>> 没有可用节点，跳过上传。")
+        print(">>> 没有节点，跳过上传。")
         return
 
-    # 只要有节点就传，不限制数量，方便你本地筛选
-    print(f">>> 准备上传 {len(nodes)} 个节点...")
-    
+    print(f">>> [5/5] 正在上传 {len(nodes)} 个节点...")
     content_str = "\n".join(nodes)
     content_bytes = content_str.encode('utf-8')
     base64_str = base64.b64encode(content_bytes).decode('utf-8')
@@ -166,30 +167,24 @@ def update_github(nodes):
         repo = g.get_repo(REPO_NAME)
         try:
             file = repo.get_contents(FILE_PATH)
-            repo.update_file(file.path, "Auto Update: US Nodes", base64_str, file.sha)
-            print(">>> GitHub 文件更新成功！")
+            repo.update_file(file.path, "Auto Update: US Strict Nodes", base64_str, file.sha)
+            print(">>> GitHub 更新成功！")
         except:
-            repo.create_file(FILE_PATH, "Auto Create: US Nodes", base64_str)
-            print(">>> GitHub 文件创建成功！")
+            repo.create_file(FILE_PATH, "Auto Create: US Strict Nodes", base64_str)
+            print(">>> GitHub 创建成功！")
     except Exception as e:
-        print(f"!!! GitHub API 操作失败: {e}")
+        print(f"!!! GitHub API 错误: {e}")
 
 def main():
     if not GITHUB_TOKEN:
-        print("错误: 未检测到 GITHUB_TOKEN")
+        print("错误: 缺少 GITHUB_TOKEN")
         exit(1)
         
     raw_content = get_subscribe_content()
-    if not raw_content:
-        return
-
     links = decode_base64(raw_content)
-    if not links:
-        return
-
-    valid_nodes = parse_filter_and_test(links)
-    
-    update_github(valid_nodes)
+    if links:
+        valid_nodes = process_nodes(links)
+        update_github(valid_nodes)
 
 if __name__ == "__main__":
     main()
